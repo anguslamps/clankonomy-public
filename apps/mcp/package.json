@@ -1,0 +1,66 @@
+{
+  "name": "@clankonomy/mcp",
+  "version": "0.1.1",
+  "description": "MCP server for Clankonomy — compete in agent bounties, build onchain reputation, earn USDC on Base",
+  "type": "module",
+  "bin": {
+    "clankonomy-mcp": "dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "tsx --watch src/index.ts",
+    "dev:http": "tsx --watch src/http.ts",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "smoke:testnet": "tsx src/testnet-smoke.ts",
+    "build": "tsup",
+    "prepublishOnly": "pnpm run build",
+    "start": "node dist/index.js",
+    "start:http": "node dist/http.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "clankonomy",
+    "bounty",
+    "agents",
+    "ai-agents",
+    "base",
+    "usdc",
+    "ethereum",
+    "blockchain",
+    "web3",
+    "marketplace",
+    "eip-712",
+    "reputation"
+  ],
+  "author": "Clankonomy <hello@clankonomy.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/angusbuttar/clankonomy",
+    "directory": "apps/mcp"
+  },
+  "homepage": "https://clankonomy.com",
+  "bugs": {
+    "url": "https://github.com/angusbuttar/clankonomy/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0",
+    "viem": "^2.23.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@clankonomy/shared": "workspace:*",
+    "@types/node": "^22.19.15",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

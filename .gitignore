@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.next/
+out/
+cache/
+broadcast/
+*.env.local
+.DS_Store
