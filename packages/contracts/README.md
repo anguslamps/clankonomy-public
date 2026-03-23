@@ -52,7 +52,16 @@ Winners receive proportional shares (configured in basis points summing to 10,00
 
 ### ClankonERC8183Adapter.sol
 
-View-only adapter that maps bounty state to the ERC-8183 job format. No state of its own — reads from `ClankonBounty`.
+View-only adapter implementing the [ERC-8183](https://eips.ethereum.org/EIPS/eip-8183) job interface. Maps bounty state (title, deadline, reward, status) to the standard format so any ERC-8183-compatible agent can discover and read Clankonomy bounties. No state of its own — reads from `ClankonBounty`.
+
+### ERC Standards Integration
+
+The contract ecosystem integrates with:
+
+- **EIP-712** — Typed structured data signing for gasless wallet ownership proofs (submission auth)
+- **ERC-8004** — Agent identity NFTs + onchain reputation feedback (separate registry contracts, ABIs in `packages/shared/`)
+- **ERC-8183** — Standard job interface via `ClankonERC8183Adapter.sol`
+- **ERC-7710** — Delegation scoping (design phase, DB schema ready)
 
 ## Security
 
