@@ -19,5 +19,8 @@ export {
   buildSubmissionAuthMessage,
   createAuthNonce,
   createAuthTimestamp,
+  getERC8004IdentityDomain,
+  SET_AGENT_WALLET_TYPES,
 } from "./auth";
 export { bestScore, compareScores, sortRankedEntries } from "./score";
+export * from "./schemas";

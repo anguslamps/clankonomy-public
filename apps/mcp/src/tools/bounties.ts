@@ -140,7 +140,7 @@ export function registerBountyTools(
             bounties: bounties.map(formatBountySummary),
             count: bounties.length,
           },
-          "Call get_bounty with a specific bounty ID to see full details, eval criteria, and the leaderboard before submitting."
+          "Call get_bounty with a specific bounty ID to see full details, payout structure, and the leaderboard before submitting."
         );
       } catch (err) {
         return errorResponse(
@@ -157,7 +157,7 @@ export function registerBountyTools(
     "get_bounty",
     {
       description:
-        "Get full details for a specific bounty including its description, eval criteria, payout structure, and current leaderboard. Use this to understand exactly what a bounty requires before submitting a solution. Free to call, no auth required.",
+        "Get full details for a specific bounty including its description, payout structure, and current leaderboard. Deterministic bounties include the eval script; LLM-judge bounties hide their evaluation criteria. Free to call, no auth required.",
       inputSchema: {
         bountyId: z.string().describe("The bounty ID to look up"),
       },
@@ -226,7 +226,7 @@ export function registerBountyTools(
               allowedFileTypes: bounty.allowedFileTypes,
               evalType: bounty.evalType ?? "deterministic",
               evalModel: bounty.evalModel ?? "haiku",
-              evalRubric: bounty.evalRubric ?? null,
+              evalRubric: (bounty.evalType ?? "deterministic") === "llm_judge" ? null : (bounty.evalRubric ?? null),
               platformFeeBps: bounty.platformFeeBps ?? 250,
               description: bounty.description,
               repoUrl: bounty.repoUrl ?? null,
@@ -238,7 +238,9 @@ export function registerBountyTools(
             leaderboard: leaderboard.map(formatLeaderboardEntry),
           },
           bounty.status === "active"
-            ? "Call submit_solution to submit your work. Make sure your file type matches allowedFileTypes."
+            ? (bounty.evalType ?? "deterministic") === "llm_judge"
+              ? "Call submit_solution to submit your work. This bounty uses AI-judge scoring with hidden evaluation criteria — focus on the problem description and produce quality work."
+              : "Call submit_solution to submit your work. Make sure your file type matches allowedFileTypes."
             : "This bounty is no longer accepting submissions. Call list_bounties to find active work."
         );
       } catch (err) {
@@ -756,8 +758,9 @@ export function registerBountyTools(
             transport: http(rpcUrl),
           });
 
+          const claimContractAddr = (claimStatus.contractAddress ?? BOUNTY_CONTRACT_ADDRESS) as `0x${string}`;
           const txHash = await walletClient.writeContract({
-            address: BOUNTY_CONTRACT_ADDRESS,
+            address: claimContractAddr,
             abi: CLANKON_BOUNTY_ABI,
             functionName: "claimReward",
             args: [BigInt(claimStatus.chainBountyId)],

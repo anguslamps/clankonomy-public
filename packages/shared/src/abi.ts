@@ -12,6 +12,11 @@ export const CLANKON_BOUNTY_ABI = [
         "name": "_owner",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "_treasury",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -128,6 +133,24 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "function",
+    "name": "batchSetDelegates",
+    "inputs": [
+      {
+        "name": "agents_",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "delegates",
+        "type": "address[]",
+        "internalType": "address[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "bountyBalance",
     "inputs": [
       {
@@ -141,6 +164,25 @@ export const CLANKON_BOUNTY_ABI = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "bountyFeeBps",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
     "stateMutability": "view"
@@ -199,12 +241,48 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "function",
+    "name": "claimRevealRevenueFor",
+    "inputs": [
+      {
+        "name": "bountyId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "solver",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "claimReward",
     "inputs": [
       {
         "name": "bountyId",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimRewardFor",
+    "inputs": [
+      {
+        "name": "bountyId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "winner",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -266,70 +344,6 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "function",
-    "name": "bountyFeeBps",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint16",
-        "internalType": "uint16"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getAllowedFeeTiers",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint16[]",
-        "internalType": "uint16[]"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isAllowedFeeTier",
-    "inputs": [
-      {
-        "name": "",
-        "type": "uint16",
-        "internalType": "uint16"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "setAllowedFeeTiers",
-    "inputs": [
-      {
-        "name": "tiers",
-        "type": "uint16[]",
-        "internalType": "uint16[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "delegatedWallets",
     "inputs": [
       {
@@ -343,6 +357,19 @@ export const CLANKON_BOUNTY_ABI = [
         "name": "",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getAllowedFeeTiers",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
       }
     ],
     "stateMutability": "view"
@@ -695,6 +722,25 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "function",
+    "name": "isAllowedFeeTier",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "nextBountyId",
     "inputs": [],
     "outputs": [
@@ -881,6 +927,19 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "function",
+    "name": "revealFeeBps",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "revealRevenueClaimed",
     "inputs": [
       {
@@ -902,6 +961,19 @@ export const CLANKON_BOUNTY_ABI = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setAllowedFeeTiers",
+    "inputs": [
+      {
+        "name": "tiers",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -975,6 +1047,32 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "function",
+    "name": "setRevealFeeBps",
+    "inputs": [
+      {
+        "name": "_feeBps",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setTreasury",
+    "inputs": [
+      {
+        "name": "_treasury",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "totalRevealRevenue",
     "inputs": [
       {
@@ -1004,6 +1102,19 @@ export const CLANKON_BOUNTY_ABI = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "treasury",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1106,19 +1217,12 @@ export const CLANKON_BOUNTY_ABI = [
         "type": "uint16",
         "indexed": false,
         "internalType": "uint16"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "FeeTiersUpdated",
-    "inputs": [
+      },
       {
-        "name": "tiers",
-        "type": "uint16[]",
+        "name": "metadataURI",
+        "type": "string",
         "indexed": false,
-        "internalType": "uint16[]"
+        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -1163,6 +1267,19 @@ export const CLANKON_BOUNTY_ABI = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FeeTiersUpdated",
+    "inputs": [
+      {
+        "name": "tiers",
+        "type": "uint16[]",
+        "indexed": false,
+        "internalType": "uint16[]"
       }
     ],
     "anonymous": false
@@ -1258,6 +1375,25 @@ export const CLANKON_BOUNTY_ABI = [
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RevealFeeUpdated",
+    "inputs": [
+      {
+        "name": "oldFeeBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "newFeeBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
       }
     ],
     "anonymous": false
@@ -1370,6 +1506,25 @@ export const CLANKON_BOUNTY_ABI = [
         "type": "bool",
         "indexed": false,
         "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TreasuryUpdated",
+    "inputs": [
+      {
+        "name": "oldTreasury",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "newTreasury",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
       }
     ],
     "anonymous": false
@@ -1503,12 +1658,12 @@ export const CLANKON_BOUNTY_ABI = [
   },
   {
     "type": "error",
-    "name": "InvalidFeeTier",
+    "name": "GracePeriodActive",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "GracePeriodActive",
+    "name": "InvalidFeeTier",
     "inputs": []
   },
   {
@@ -1519,6 +1674,11 @@ export const CLANKON_BOUNTY_ABI = [
   {
     "type": "error",
     "name": "InvalidRevealSet",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAuthorized",
     "inputs": []
   },
   {

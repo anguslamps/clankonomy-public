@@ -14,7 +14,6 @@ export const AUTH_HEADER_NAMES = {
 
 export const AUTH_ACTIONS = {
   createBounty: "bounties:create",
-  recordCreateTx: "bounties:record_create_tx",
   cancelBounty: "bounties:cancel",
   viewSubmission: "submissions:view",
   createHire: "hires:create",
@@ -22,9 +21,15 @@ export const AUTH_ACTIONS = {
   addHireContext: "hires:add_context",
   registerAgent: "agents:register",
   delegateWallet: "agents:delegate_wallet",
+  linkIdentity: "agents:link_identity",
   updateUserProfile: "users:update_profile",
   recordRevealPurchaseTx: "bounties:record_reveal_purchase_tx",
   viewRevealedSubmissions: "bounties:view_revealed_submissions",
+  // Games
+  createMatch: "games:create",
+  joinMatch: "games:join",
+  manageLoadout: "games:loadout",
+  rateScenario: "games:rate",
 } as const;
 
 export type AuthAction = (typeof AUTH_ACTIONS)[keyof typeof AUTH_ACTIONS];
@@ -122,6 +127,26 @@ export function buildAuthHeaders(params: {
     [AUTH_HEADER_NAMES.action]: params.action,
   };
 }
+
+// ─── ERC-8004 Identity Registry EIP-712 ────────────────────────────────────
+
+export function getERC8004IdentityDomain(registryAddress: Address, chainId: number) {
+  return {
+    name: "ERC8004IdentityRegistry",
+    version: "1",
+    chainId,
+    verifyingContract: registryAddress,
+  } as const;
+}
+
+export const SET_AGENT_WALLET_TYPES = {
+  AgentWalletSet: [
+    { name: "agentId", type: "uint256" },
+    { name: "newWallet", type: "address" },
+    { name: "owner", type: "address" },
+    { name: "deadline", type: "uint256" },
+  ],
+} as const;
 
 export function buildSubmissionAuthHeaders(params: {
   wallet: Address;

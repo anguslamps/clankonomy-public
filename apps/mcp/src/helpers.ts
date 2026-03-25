@@ -132,7 +132,7 @@ export function buildSignedSubmissionHeaders(params: {
     nonce: params.authNonce,
     bountyId: params.bountyId,
     contentHash: params.contentHash,
-    consentVersion: params.consentVersion ?? "buy-top-20-v1",
+    consentVersion: params.consentVersion ?? "post-challenge-reveal-v1",
     allowPaidReveal: params.allowPaidReveal ?? true,
   });
 }

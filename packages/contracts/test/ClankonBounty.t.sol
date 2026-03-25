@@ -24,6 +24,7 @@ contract ClankonBountyTest is Test {
 
     address owner = makeAddr("owner");
     address oracle = makeAddr("oracle");
+    address treasury = makeAddr("treasury");
     address poster = makeAddr("poster");
     address solver1 = makeAddr("solver1");
     address solver2 = makeAddr("solver2");
@@ -35,7 +36,7 @@ contract ClankonBountyTest is Test {
 
     function setUp() public {
         usdc = new MockUSDC();
-        bounty = new ClankonBounty(oracle, owner);
+        bounty = new ClankonBounty(oracle, owner, treasury);
 
         vm.prank(owner);
         bounty.setAllowedToken(address(usdc), true);
@@ -134,6 +135,17 @@ contract ClankonBountyTest is Test {
         uint16[] memory shares = bounty.getBountyShares(0);
         assertEq(shares.length, 1);
         assertEq(shares[0], 10000);
+    }
+
+    function test_createBounty_emitsMetadataURI() public {
+        uint256 deadline = block.timestamp + 1 days;
+        string memory uri = "550e8400-e29b-41d4-a716-446655440000";
+
+        vm.expectEmit(true, true, false, true);
+        emit ClankonBounty.BountyCreated(0, poster, address(usdc), BOUNTY_AMOUNT, deadline, 1, DEFAULT_FEE_BPS, uri);
+
+        vm.prank(poster);
+        bounty.createBounty(address(usdc), BOUNTY_AMOUNT, deadline, EVAL_HASH, uri, 1, _singleWinnerShares(), DEFAULT_FEE_BPS);
     }
 
     function test_createBounty_multiWinner() public {
@@ -251,7 +263,7 @@ contract ClankonBountyTest is Test {
         // 1000 USDC - 2.5% fee = 975 USDC to winner
         assertEq(bounty.winnerRewards(bountyId, solver1), 975e6);
         // Fee transferred to owner
-        assertEq(usdc.balanceOf(owner), 25e6);
+        assertEq(usdc.balanceOf(treasury), 25e6);
     }
 
     function test_reportWinners_twoWinners() public {
@@ -414,7 +426,7 @@ contract ClankonBountyTest is Test {
         bounty.claimReward(bountyId);
 
         assertEq(usdc.balanceOf(solver1), 975e6);
-        assertEq(usdc.balanceOf(owner), 25e6);
+        assertEq(usdc.balanceOf(treasury), 25e6);
 
         ClankonBounty.Bounty memory b = bounty.getBounty(bountyId);
         assertEq(uint8(b.status), uint8(ClankonBounty.BountyStatus.Claimed));
@@ -496,7 +508,7 @@ contract ClankonBountyTest is Test {
 
         // 80% penalty: 1000 USDC * 80% = 800 USDC to owner, 200 USDC refund to poster
         assertEq(usdc.balanceOf(poster), 10_000e6 - 800e6); // 9200 USDC
-        assertEq(usdc.balanceOf(owner), 800e6);              // penalty
+        assertEq(usdc.balanceOf(treasury), 800e6);              // penalty
         assertEq(usdc.balanceOf(address(bounty)), 0);
 
         ClankonBounty.Bounty memory b = bounty.getBounty(bountyId);
@@ -726,8 +738,8 @@ contract ClankonBountyTest is Test {
         vm.prank(poster);
         bounty.reclaimBounty(bountyId);
 
-        // Invariant: fee (owner) + solver1 + reclaim (poster) == deposited
-        uint256 fee = usdc.balanceOf(owner);
+        // Invariant: fee (treasury) + solver1 + reclaim (poster) == deposited
+        uint256 fee = usdc.balanceOf(treasury);
         uint256 claimed = usdc.balanceOf(solver1);
         uint256 posterFinal = usdc.balanceOf(poster);
         uint256 posterInitial = 10_000e6 - BOUNTY_AMOUNT;
@@ -754,7 +766,7 @@ contract ClankonBountyTest is Test {
 
         // 5. Verify final state
         assertEq(usdc.balanceOf(solver1), 975e6);
-        assertEq(usdc.balanceOf(owner), 25e6);
+        assertEq(usdc.balanceOf(treasury), 25e6);
         assertEq(usdc.balanceOf(address(bounty)), 0);
     }
 
@@ -794,6 +806,48 @@ contract ClankonBountyTest is Test {
         vm.prank(solver1);
         bounty.setDelegateWallet(cold2);
         assertEq(bounty.getDelegateWallet(solver1), cold2);
+    }
+
+    function test_batchSetDelegates() public {
+        address cold1 = makeAddr("batchCold1");
+        address cold2 = makeAddr("batchCold2");
+
+        address[] memory agents_ = new address[](2);
+        agents_[0] = solver1;
+        agents_[1] = solver2;
+
+        address[] memory delegates = new address[](2);
+        delegates[0] = cold1;
+        delegates[1] = cold2;
+
+        vm.prank(oracle);
+        bounty.batchSetDelegates(agents_, delegates);
+
+        assertEq(bounty.getDelegateWallet(solver1), cold1);
+        assertEq(bounty.getDelegateWallet(solver2), cold2);
+    }
+
+    function test_batchSetDelegates_reverts_notOracle() public {
+        address[] memory agents_ = new address[](1);
+        agents_[0] = solver1;
+        address[] memory delegates = new address[](1);
+        delegates[0] = makeAddr("cold");
+
+        vm.prank(solver1);
+        vm.expectRevert(ClankonBounty.OnlyOracle.selector);
+        bounty.batchSetDelegates(agents_, delegates);
+    }
+
+    function test_batchSetDelegates_reverts_lengthMismatch() public {
+        address[] memory agents_ = new address[](2);
+        agents_[0] = solver1;
+        agents_[1] = solver2;
+        address[] memory delegates = new address[](1);
+        delegates[0] = makeAddr("cold");
+
+        vm.prank(oracle);
+        vm.expectRevert(ClankonBounty.WinnersLengthMismatch.selector);
+        bounty.batchSetDelegates(agents_, delegates);
     }
 
     function test_claimReward_withDelegation() public {
@@ -881,7 +935,9 @@ contract ClankonBountyTest is Test {
         bounty.buyRevealBundle(bountyId);
 
         assertTrue(bounty.hasRevealBundleAccess(bountyId, solver3));
-        assertEq(bounty.getTotalRevealRevenue(bountyId), 50e6);
+        // 5% reveal fee: 50e6 * 500/10000 = 2.5e6 to treasury, 47.5e6 net to solvers
+        assertEq(bounty.getTotalRevealRevenue(bountyId), 47_500_000);
+        assertEq(usdc.balanceOf(treasury), 2_500_000);
     }
 
     function test_reportRevealSet_reverts_duplicateSolver() public {
@@ -950,7 +1006,8 @@ contract ClankonBountyTest is Test {
         vm.prank(solver1);
         bounty.claimRevealRevenue(bountyId);
 
-        assertEq(usdc.balanceOf(coldWallet), 33_335_000);
+        // 5% reveal fee: net = 50e6 * 9500/10000 = 47.5e6. Solver1 share = 47.5e6 * 6667/10000 = 31_668_250
+        assertEq(usdc.balanceOf(coldWallet), 31_668_250);
         assertEq(bounty.getRevealRevenueAvailable(bountyId, solver1), 0);
     }
 
@@ -971,7 +1028,7 @@ contract ClankonBountyTest is Test {
 
         // 1000 USDC - 1% fee = 990 USDC to winner
         assertEq(bounty.winnerRewards(bountyId, solver1), 990e6);
-        assertEq(usdc.balanceOf(owner), 10e6);
+        assertEq(usdc.balanceOf(treasury), 10e6);
     }
 
     function test_createBounty_withOpusFee() public {
@@ -987,7 +1044,7 @@ contract ClankonBountyTest is Test {
 
         // 1000 USDC - 5% fee = 950 USDC to winner
         assertEq(bounty.winnerRewards(bountyId, solver1), 950e6);
-        assertEq(usdc.balanceOf(owner), 50e6);
+        assertEq(usdc.balanceOf(treasury), 50e6);
     }
 
     function test_createBounty_reverts_invalidFeeTier() public {
@@ -1055,7 +1112,162 @@ contract ClankonBountyTest is Test {
         // Bounty 2: 5% fee → 950 to winner, 50 fee
         assertEq(bounty.winnerRewards(bountyId2, solver2), 950e6);
         // Owner gets both fees: 10 + 50 = 60
-        assertEq(usdc.balanceOf(owner), 60e6);
+        assertEq(usdc.balanceOf(treasury), 60e6);
+    }
+
+    // ─── claimRewardFor (Delegate Claiming) ────────────────────────────────
+
+    function test_claimRewardFor_delegateClaims() public {
+        address delegate = makeAddr("delegate");
+
+        vm.prank(solver1);
+        bounty.setDelegateWallet(delegate);
+
+        uint256 bountyId = _createSingleWinnerBounty();
+        uint256 deadline = bounty.getBounty(bountyId).deadline;
+        vm.warp(deadline + 1);
+
+        vm.prank(oracle);
+        bounty.reportWinners(bountyId, _singleWinnerArray(solver1), _singleScoreArray(88));
+
+        // Delegate calls claimRewardFor
+        vm.prank(delegate);
+        bounty.claimRewardFor(bountyId, solver1);
+
+        // Tokens go to delegate (solver1's delegatedWallet)
+        assertEq(usdc.balanceOf(delegate), 975e6);
+        assertEq(usdc.balanceOf(solver1), 0);
+        assertTrue(bounty.hasClaimed(bountyId, solver1));
+    }
+
+    function test_claimRewardFor_winnerSelfClaims() public {
+        uint256 bountyId = _createSingleWinnerBounty();
+        uint256 deadline = bounty.getBounty(bountyId).deadline;
+        vm.warp(deadline + 1);
+
+        vm.prank(oracle);
+        bounty.reportWinners(bountyId, _singleWinnerArray(solver1), _singleScoreArray(88));
+
+        // Winner calls claimRewardFor on self — works same as claimReward
+        vm.prank(solver1);
+        bounty.claimRewardFor(bountyId, solver1);
+
+        assertEq(usdc.balanceOf(solver1), 975e6);
+        assertTrue(bounty.hasClaimed(bountyId, solver1));
+    }
+
+    function test_claimRewardFor_unauthorizedReverts() public {
+        address rando = makeAddr("rando");
+
+        uint256 bountyId = _createSingleWinnerBounty();
+        uint256 deadline = bounty.getBounty(bountyId).deadline;
+        vm.warp(deadline + 1);
+
+        vm.prank(oracle);
+        bounty.reportWinners(bountyId, _singleWinnerArray(solver1), _singleScoreArray(88));
+
+        // Random address cannot claim for solver1
+        vm.prank(rando);
+        vm.expectRevert(ClankonBounty.NotAuthorized.selector);
+        bounty.claimRewardFor(bountyId, solver1);
+    }
+
+    function test_claimRewardFor_doubleClaim() public {
+        address delegate = makeAddr("delegate");
+
+        vm.prank(solver1);
+        bounty.setDelegateWallet(delegate);
+
+        uint256 bountyId = _createSingleWinnerBounty();
+        uint256 deadline = bounty.getBounty(bountyId).deadline;
+        vm.warp(deadline + 1);
+
+        vm.prank(oracle);
+        bounty.reportWinners(bountyId, _singleWinnerArray(solver1), _singleScoreArray(88));
+
+        vm.prank(delegate);
+        bounty.claimRewardFor(bountyId, solver1);
+
+        // Second claim reverts
+        vm.prank(delegate);
+        vm.expectRevert(ClankonBounty.AlreadyClaimed.selector);
+        bounty.claimRewardFor(bountyId, solver1);
+    }
+
+    function test_claimRewardFor_multiWinner() public {
+        address delegate = makeAddr("delegate");
+
+        vm.prank(solver1);
+        bounty.setDelegateWallet(delegate);
+
+        uint256 bountyId = _createMultiWinnerBounty(2, _twoWinnerShares());
+        uint256 deadline = bounty.getBounty(bountyId).deadline;
+        vm.warp(deadline + 1);
+
+        address[] memory winners = new address[](2);
+        winners[0] = solver1;
+        winners[1] = solver2;
+        uint256[] memory scores = new uint256[](2);
+        scores[0] = 95;
+        scores[1] = 80;
+
+        vm.prank(oracle);
+        bounty.reportWinners(bountyId, winners, scores);
+
+        // Delegate claims for solver1 only
+        vm.prank(delegate);
+        bounty.claimRewardFor(bountyId, solver1);
+
+        assertTrue(bounty.hasClaimed(bountyId, solver1));
+        assertFalse(bounty.hasClaimed(bountyId, solver2));
+
+        // solver2 still has unclaimed reward
+        uint256 solver2Reward = bounty.winnerRewards(bountyId, solver2);
+        assertTrue(solver2Reward > 0);
+
+        // Bounty should still be Resolved (not Claimed) since solver2 hasn't claimed
+        ClankonBounty.Bounty memory b = bounty.getBounty(bountyId);
+        assertEq(uint8(b.status), uint8(ClankonBounty.BountyStatus.Resolved));
+    }
+
+    function test_claimRevealRevenueFor_delegateClaims() public {
+        address delegate = makeAddr("revealDelegate");
+
+        uint256 bountyId = _createSingleWinnerBounty();
+        uint256 deadline = bounty.getBounty(bountyId).deadline;
+        vm.warp(deadline + 1);
+
+        address[] memory revealSolvers = new address[](2);
+        revealSolvers[0] = solver1;
+        revealSolvers[1] = solver2;
+
+        vm.prank(oracle);
+        bounty.reportRevealSet(bountyId, revealSolvers, _twoRevealShares(), 50e6);
+
+        // Buyer purchases bundle
+        usdc.mint(solver3, 100e6);
+        vm.prank(solver3);
+        usdc.approve(address(bounty), type(uint256).max);
+        vm.prank(solver3);
+        bounty.buyRevealBundle(bountyId);
+
+        // solver1 sets delegate
+        vm.prank(solver1);
+        bounty.setDelegateWallet(delegate);
+
+        // Delegate claims reveal revenue for solver1
+        vm.prank(delegate);
+        bounty.claimRevealRevenueFor(bountyId, solver1);
+
+        // Revenue goes to delegate (net of 5% reveal fee: 47.5e6 * 6667/10000 = 31_668_250)
+        assertEq(usdc.balanceOf(delegate), 31_668_250);
+        assertEq(bounty.getRevealRevenueAvailable(bountyId, solver1), 0);
+
+        // Unauthorized call reverts
+        address rando = makeAddr("rando");
+        vm.prank(rando);
+        vm.expectRevert(ClankonBounty.NotAuthorized.selector);
+        bounty.claimRevealRevenueFor(bountyId, solver2);
     }
 
     function test_fullLifecycle_threeWinners() public {
@@ -1091,7 +1303,7 @@ contract ClankonBountyTest is Test {
         assertEq(usdc.balanceOf(solver1), 585_000_000); // 60%
         assertEq(usdc.balanceOf(solver2), 292_500_000); // 30%
         assertEq(usdc.balanceOf(solver3), 97_500_000);  // 10%
-        assertEq(usdc.balanceOf(owner), 25_000_000);    // 2.5% fee
+        assertEq(usdc.balanceOf(treasury), 25_000_000);    // 2.5% fee
 
         ClankonBounty.Bounty memory b = bounty.getBounty(bountyId);
         assertEq(uint8(b.status), uint8(ClankonBounty.BountyStatus.Claimed));

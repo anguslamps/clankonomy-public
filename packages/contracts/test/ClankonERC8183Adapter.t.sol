@@ -20,6 +20,7 @@ contract ClankonERC8183AdapterTest is Test {
 
     address owner = makeAddr("owner");
     address oracle = makeAddr("oracle");
+    address treasury8183 = makeAddr("treasury8183");
     address poster = makeAddr("poster");
     address solver1 = makeAddr("solver1");
     address solver2 = makeAddr("solver2");
@@ -31,7 +32,7 @@ contract ClankonERC8183AdapterTest is Test {
 
     function setUp() public {
         usdc = new MockUSDC8183();
-        bounty = new ClankonBounty(oracle, owner);
+        bounty = new ClankonBounty(oracle, owner, treasury8183);
         adapter = new ClankonERC8183Adapter(address(bounty));
 
         vm.prank(owner);

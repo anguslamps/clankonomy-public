@@ -7,7 +7,14 @@ import type {
   Hire,
   ReputationScore,
 } from "@clankonomy/shared";
-import { API_ROUTES, AUTH_ACTIONS } from "@clankonomy/shared";
+import {
+  API_ROUTES,
+  AUTH_ACTIONS,
+  getERC8004IdentityDomain,
+  SET_AGENT_WALLET_TYPES,
+  getNetwork,
+  createAuthTimestamp,
+} from "@clankonomy/shared";
 import {
   buildSignedActionHeaders,
   callApi,
@@ -17,6 +24,7 @@ import {
   formatAmount,
   signAuthAction,
 } from "../helpers.js";
+import { getWalletAccount } from "./wallet.js";
 import type { ServerMode } from "../server.js";
 
 // ─── Local formatters ───────────────────────────────────────────────────────
@@ -183,7 +191,7 @@ export function registerAgentTools(
               isAvailable: agent.isAvailable,
             },
           },
-          "Profile registered. Call list_bounties to find work, or get_available_jobs to see current recommended work."
+          "Profile registered. Your ERC-8004 identity is being minted. Call link_identity in ~60s to complete the onchain wallet link. Then call list_bounties to find work."
         );
       } catch (err) {
         return errorResponse(
@@ -533,6 +541,240 @@ export function registerAgentTools(
           "DELEGATE_WALLET_FAILED",
           err instanceof Error ? err.message : String(err),
           "Verify both wallet addresses are valid (0x...) and the EIP-712 signature is correct."
+        );
+      }
+    }
+  );
+
+  // ── link_identity ──────────────────────────────────────────────────────
+  server.registerTool(
+    "link_identity",
+    {
+      description:
+        "Complete the ERC-8004 identity onchain wallet link. After registering, your identity NFT is minted by the oracle (~60s). Once minted, call this tool to sign and submit the wallet-link signature so the oracle can call setAgentWallet. In local mode, the signature is auto-generated. In hosted mode, provide erc8004WalletSig and deadline manually.",
+      inputSchema: {
+        walletAddress: z
+          .string()
+          .optional()
+          .describe(
+            isHosted
+              ? "Your wallet address (0x...). Required in hosted MCP mode."
+              : "Your wallet address (0x...). Optional if local wallet exists."
+          ),
+        erc8004WalletSig: z
+          .string()
+          .optional()
+          .describe(
+            isHosted
+              ? "EIP-712 AgentWalletSet signature from your wallet. Required in hosted MCP mode."
+              : "EIP-712 AgentWalletSet signature. Optional if local wallet exists (auto-signed)."
+          ),
+        deadline: z
+          .string()
+          .optional()
+          .describe(
+            isHosted
+              ? "Signature deadline in unix seconds. Required in hosted MCP mode."
+              : "Signature deadline in unix seconds. Optional if local wallet exists (auto-set to now + 5 minutes)."
+          ),
+        walletSignature: z
+          .string()
+          .optional()
+          .describe(
+            isHosted
+              ? "EIP-712 Clankonomy auth signature for the link_identity action. Required in hosted MCP mode."
+              : "Optional if local wallet exists."
+          ),
+        authTimestamp: z
+          .number()
+          .optional()
+          .describe(
+            isHosted
+              ? "Unix timestamp for the auth payload. Required in hosted MCP mode."
+              : "Optional if local wallet exists."
+          ),
+        authNonce: z
+          .string()
+          .optional()
+          .describe(
+            isHosted
+              ? "Nonce for the auth payload. Required in hosted MCP mode."
+              : "Optional if local wallet exists."
+          ),
+      },
+      outputSchema: {
+        tokenId: z.number(),
+        status: z.string(),
+        nextAction: z.string(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    async ({
+      walletAddress,
+      erc8004WalletSig,
+      deadline,
+      walletSignature,
+      authTimestamp,
+      authNonce,
+    }) => {
+      try {
+        // Resolve auth params (Clankonomy domain auth)
+        let authParams: {
+          walletAddress: `0x${string}`;
+          walletSignature: string;
+          authTimestamp: number;
+          authNonce: string;
+        };
+
+        if (walletAddress && walletSignature && authTimestamp && authNonce) {
+          authParams = {
+            walletAddress: walletAddress as `0x${string}`,
+            walletSignature,
+            authTimestamp,
+            authNonce,
+          };
+        } else {
+          if (isHosted) {
+            return errorResponse(
+              "HOSTED_SIGNER_REQUIRED",
+              "Hosted MCP does not manage private keys or auto-sign link-identity requests.",
+              "Provide walletAddress, walletSignature, authTimestamp, authNonce, erc8004WalletSig, and deadline from your own signer, or use the package MCP for local auto-signing."
+            );
+          }
+          const signed = await signAuthAction(AUTH_ACTIONS.linkIdentity);
+          authParams = signed;
+        }
+
+        // Check agent status first
+        const agentProfile = await callApi<{ agent: Agent }>(
+          `/agents/${authParams.walletAddress}`
+        );
+        const agent = agentProfile.agent;
+
+        if (agent.erc8004MintStatus === "pending") {
+          return successResponse(
+            { tokenId: 0, status: "pending" },
+            "Identity NFT is still being minted by the oracle. Try again in ~60 seconds."
+          );
+        }
+
+        if (agent.erc8004MintStatus === "confirmed") {
+          return successResponse(
+            { tokenId: agent.erc8004TokenId ?? 0, status: "confirmed" },
+            "Identity is already fully linked onchain. No action needed."
+          );
+        }
+
+        if (agent.erc8004MintStatus === "linking") {
+          return successResponse(
+            { tokenId: agent.erc8004TokenId ?? 0, status: "linking" },
+            "Wallet-link signature already submitted. The oracle will execute setAgentWallet shortly."
+          );
+        }
+
+        if (agent.erc8004MintStatus !== "minted" || !agent.erc8004TokenId) {
+          return errorResponse(
+            "IDENTITY_NOT_MINTED",
+            `Identity status is '${agent.erc8004MintStatus}'. Expected 'minted' with a tokenId.`,
+            agent.erc8004MintStatus === "failed"
+              ? "Identity minting failed. Contact platform support."
+              : "Wait for the oracle to mint your identity NFT, then try again."
+          );
+        }
+
+        // Generate or use provided ERC-8004 wallet-link signature
+        let walletSig: string;
+        let sigDeadline: string;
+
+        if (erc8004WalletSig && deadline) {
+          walletSig = erc8004WalletSig;
+          sigDeadline = deadline;
+        } else {
+          if (isHosted) {
+            return errorResponse(
+              "HOSTED_SIGNER_REQUIRED",
+              "Hosted MCP cannot auto-sign the ERC-8004 AgentWalletSet message.",
+              "Provide erc8004WalletSig and deadline from your own signer."
+            );
+          }
+
+          // Auto-sign with local wallet
+          const account = await getWalletAccount();
+          if (!account) {
+            return errorResponse(
+              "NO_WALLET",
+              "No local wallet found.",
+              "Call create_wallet first, or provide erc8004WalletSig and deadline manually."
+            );
+          }
+
+          const networkConfig = getNetwork();
+          const domain = getERC8004IdentityDomain(
+            networkConfig.erc8004IdentityRegistry,
+            networkConfig.id === "mainnet" ? 8453 : 84532,
+          );
+
+          // 5-minute deadline (max allowed by contract)
+          const deadlineBigInt = BigInt(Math.floor(Date.now() / 1000) + 300);
+          sigDeadline = deadlineBigInt.toString();
+
+          // We need the oracle address — it's the NFT owner
+          // The API will validate the signature, so we need to know the oracle address.
+          // Fetch it from the agent profile response or from the platform info.
+          const platformInfo = await callApi<{ oracleAddress: string }>("/health");
+          const oracleAddress = platformInfo.oracleAddress;
+
+          if (!oracleAddress) {
+            return errorResponse(
+              "ORACLE_ADDRESS_UNKNOWN",
+              "Could not determine the oracle address for EIP-712 signing.",
+              "Provide erc8004WalletSig and deadline manually, or contact platform admin."
+            );
+          }
+
+          walletSig = await account.signTypedData({
+            domain,
+            types: SET_AGENT_WALLET_TYPES,
+            primaryType: "AgentWalletSet",
+            message: {
+              agentId: BigInt(agent.erc8004TokenId),
+              newWallet: account.address,
+              owner: oracleAddress as `0x${string}`,
+              deadline: deadlineBigInt,
+            },
+          });
+        }
+
+        // Submit to API
+        const res = await callApi<{ tokenId: number; status: string }>(
+          API_ROUTES.agentLinkIdentity(authParams.walletAddress),
+          {
+            method: "POST",
+            headers: buildSignedActionHeaders({
+              ...authParams,
+              action: AUTH_ACTIONS.linkIdentity,
+            }),
+            body: JSON.stringify({
+              erc8004WalletSig: walletSig,
+              deadline: sigDeadline,
+            }),
+          }
+        );
+
+        return successResponse(
+          { tokenId: res.tokenId, status: res.status },
+          "Wallet-link signature submitted. The oracle will execute setAgentWallet within ~60 seconds. Call get_my_reputation to check your profile."
+        );
+      } catch (err) {
+        return errorResponse(
+          "LINK_IDENTITY_FAILED",
+          err instanceof Error ? err.message : String(err),
+          "Verify your agent has been minted (erc8004MintStatus = 'minted'). Check with get_agent_profile, then try again."
         );
       }
     }

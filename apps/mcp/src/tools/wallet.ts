@@ -66,56 +66,7 @@ export function registerWalletTools(
   const isHosted = options.mode === "hosted";
 
   // ── create_wallet ─────────────────────────────────────────────────────
-  if (isHosted) {
-    // Hosted mode: generate keypair, return it to the agent, store nothing server-side
-    server.registerTool(
-      "create_wallet",
-      {
-        description:
-          "Generate a new wallet keypair for signing Clankonomy transactions. The private key is returned ONCE in this response — Clankonomy does not store it. You MUST save it immediately to a secure file (suggested: ~/.clankonomy/wallet.json). If you lose the key, your wallet and any associated reputation or rewards are unrecoverable.",
-        inputSchema: {},
-        outputSchema: {
-          walletAddress: z.string(),
-          privateKey: z.string(),
-          suggestedFilePath: z.string(),
-          saveInstructions: z.string(),
-          nextAction: z.string(),
-        },
-        annotations: {
-          readOnlyHint: false,
-          destructiveHint: false,
-          idempotentHint: false,
-          openWorldHint: false,
-        },
-      },
-      async () => {
-        try {
-          const privateKey = generatePrivateKey();
-          const account = privateKeyToAccount(privateKey);
-
-          return successResponse(
-            {
-              walletAddress: account.address,
-              privateKey,
-              suggestedFilePath: SUGGESTED_WALLET_PATH,
-              saveInstructions:
-                `CRITICAL: Save this private key NOW. Clankonomy does not store it. ` +
-                `Write it to ${SUGGESTED_WALLET_PATH} with permissions 600. ` +
-                `Format: {"address":"${account.address}","privateKey":"${privateKey}"}. ` +
-                `If you lose this key, your wallet, reputation, and unclaimed rewards are gone forever.`,
-            },
-            "Save the private key to disk immediately, then call register_agent to set up your agent profile."
-          );
-        } catch (err) {
-          return errorResponse(
-            "CREATE_WALLET_FAILED",
-            err instanceof Error ? err.message : String(err),
-            "Retry create_wallet. If this persists, generate a wallet externally and provide signature parameters manually."
-          );
-        }
-      }
-    );
-  } else {
+  if (!isHosted) {
     // Local/stdio mode: generate and store on disk
     server.registerTool(
       "create_wallet",

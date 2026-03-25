@@ -53,7 +53,9 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
     mapping(uint256 => uint256) public totalRevealRevenue;
 
     address public oracle;
+    address public treasury;
     uint256 public platformFeeBps = 250; // 2.5% (default for legacy bounties)
+    uint16 public revealFeeBps = 500; // 5% reveal bundle platform fee
 
     mapping(uint256 => uint16) public bountyFeeBps; // per-bounty fee tier
     uint16[] internal _allowedFeeTiers; // e.g. [100, 250, 500]
@@ -80,7 +82,8 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
         uint256 amount,
         uint256 deadline,
         uint8 numWinners,
-        uint16 feeBps
+        uint16 feeBps,
+        string metadataURI
     );
     event WinnersReported(uint256 indexed bountyId, address[] winners, uint256[] scores);
     event RewardClaimed(uint256 indexed bountyId, address indexed winner, address indexed recipient, uint256 reward);
@@ -95,6 +98,8 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
     event RevealSetReported(uint256 indexed bountyId, address[] revealedSolvers, uint16[] revealSharesBps, uint256 bundlePrice);
     event RevealBundlePurchased(uint256 indexed bountyId, address indexed buyer, uint256 amount);
     event RevealRevenueClaimed(uint256 indexed bountyId, address indexed solver, address indexed recipient, uint256 amount);
+    event TreasuryUpdated(address oldTreasury, address newTreasury);
+    event RevealFeeUpdated(uint16 oldFeeBps, uint16 newFeeBps);
 
     // ─── Errors ──────────────────────────────────────────────────────────────────
 
@@ -130,11 +135,14 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
     error InvalidRevealSet();
     error NotRevealSolver();
     error InvalidFeeTier();
+    error NotAuthorized();
 
     // ─── Constructor ─────────────────────────────────────────────────────────────
 
-    constructor(address _oracle, address _owner) Ownable(_owner) {
+    constructor(address _oracle, address _owner, address _treasury) Ownable(_owner) {
+        if (_treasury == address(0)) revert ZeroAddress();
         oracle = _oracle;
+        treasury = _treasury;
         // Initialize default fee tiers: Haiku 1%, Sonnet 2.5%, Opus 5%
         _allowedFeeTiers = [100, 250, 500];
         isAllowedFeeTier[100] = true;
@@ -197,7 +205,7 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
 
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
-        emit BountyCreated(bountyId, msg.sender, token, amount, deadline, numWinners, feeBps);
+        emit BountyCreated(bountyId, msg.sender, token, amount, deadline, numWinners, feeBps, metadataURI);
     }
 
     /// @notice Poster cancels bounty before deadline if no winner reported
@@ -218,7 +226,7 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
             IERC20(b.token).safeTransfer(b.poster, refund);
         }
         if (penalty > 0) {
-            IERC20(b.token).safeTransfer(owner(), penalty);
+            IERC20(b.token).safeTransfer(treasury, penalty);
         }
 
         emit BountyCancelled(bountyId, refund, penalty);
@@ -299,7 +307,7 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
         bountyBalance[bountyId] -= fee;
 
         if (fee > 0) {
-            IERC20(b.token).safeTransfer(owner(), fee);
+            IERC20(b.token).safeTransfer(treasury, fee);
         }
 
         emit WinnersReported(bountyId, winners, scores);
@@ -348,20 +356,32 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
     /// @notice Winner claims their pre-computed reward. Tokens go to delegate wallet if set.
     /// @dev Intentionally pause-gated even though reclaimBounty is not, to allow emergency fund recovery by posters.
     function claimReward(uint256 bountyId) external nonReentrant whenNotPaused {
-        uint256 reward = winnerRewards[bountyId][msg.sender];
+        _claimRewardFor(bountyId, msg.sender);
+    }
+
+    /// @notice Delegate (or winner themselves) claims reward on behalf of the winner.
+    /// @param bountyId The bounty to claim from
+    /// @param winner The winning address whose reward is being claimed
+    function claimRewardFor(uint256 bountyId, address winner) external nonReentrant whenNotPaused {
+        if (msg.sender != winner && delegatedWallets[winner] != msg.sender) revert NotAuthorized();
+        _claimRewardFor(bountyId, winner);
+    }
+
+    function _claimRewardFor(uint256 bountyId, address winner) internal {
+        uint256 reward = winnerRewards[bountyId][winner];
         if (reward == 0) revert NotWinner();
-        if (hasClaimed[bountyId][msg.sender]) revert AlreadyClaimed();
+        if (hasClaimed[bountyId][winner]) revert AlreadyClaimed();
 
         Bounty storage b = _bounties[bountyId];
         if (b.status != BountyStatus.Resolved) revert BountyNotActive();
 
-        hasClaimed[bountyId][msg.sender] = true;
+        hasClaimed[bountyId][winner] = true;
         bountyBalance[bountyId] -= reward;
 
-        // Send to delegate wallet if set, otherwise to msg.sender
-        address recipient = delegatedWallets[msg.sender];
+        // Send to delegate wallet if set, otherwise to winner
+        address recipient = delegatedWallets[winner];
         if (recipient == address(0)) {
-            recipient = msg.sender;
+            recipient = winner;
         }
         IERC20(b.token).safeTransfer(recipient, reward);
 
@@ -378,10 +398,11 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
             b.status = BountyStatus.Claimed;
         }
 
-        emit RewardClaimed(bountyId, msg.sender, recipient, reward);
+        emit RewardClaimed(bountyId, winner, recipient, reward);
     }
 
     /// @notice Buy permanent access to the frozen reveal bundle for this bounty.
+    /// @dev Platform fee (revealFeeBps) deducted and sent to treasury. Solvers split the net.
     function buyRevealBundle(uint256 bountyId) external nonReentrant whenNotPaused {
         Bounty storage b = _bounties[bountyId];
         uint256 price = revealBundlePrice[bountyId];
@@ -389,34 +410,53 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
         if (price == 0) revert RevealNotReported();
         if (revealBundleAccess[bountyId][msg.sender]) revert DuplicateBuyer();
 
+        uint256 fee = (price * revealFeeBps) / 10000;
+        uint256 netPrice = price - fee;
+
         revealBundleAccess[bountyId][msg.sender] = true;
-        totalRevealRevenue[bountyId] += price;
+        totalRevealRevenue[bountyId] += netPrice;
 
         IERC20(b.token).safeTransferFrom(msg.sender, address(this), price);
+
+        if (fee > 0) {
+            IERC20(b.token).safeTransfer(treasury, fee);
+        }
 
         emit RevealBundlePurchased(bountyId, msg.sender, price);
     }
 
     /// @notice Claim accrued reveal revenue for the caller if they are in the reveal set.
     function claimRevealRevenue(uint256 bountyId) external nonReentrant whenNotPaused {
-        if (!_isRevealSolver[bountyId][msg.sender]) revert NotRevealSolver();
+        _claimRevealRevenueFor(bountyId, msg.sender);
+    }
+
+    /// @notice Delegate (or solver themselves) claims reveal revenue on behalf of the solver.
+    /// @param bountyId The bounty to claim reveal revenue from
+    /// @param solver The solver address whose reveal revenue is being claimed
+    function claimRevealRevenueFor(uint256 bountyId, address solver) external nonReentrant whenNotPaused {
+        if (msg.sender != solver && delegatedWallets[solver] != msg.sender) revert NotAuthorized();
+        _claimRevealRevenueFor(bountyId, solver);
+    }
+
+    function _claimRevealRevenueFor(uint256 bountyId, address solver) internal {
+        if (!_isRevealSolver[bountyId][solver]) revert NotRevealSolver();
 
         Bounty storage b = _bounties[bountyId];
-        uint256 accrued = getRevealRevenueAccrued(bountyId, msg.sender);
-        uint256 claimed = revealRevenueClaimed[bountyId][msg.sender];
+        uint256 accrued = getRevealRevenueAccrued(bountyId, solver);
+        uint256 claimed = revealRevenueClaimed[bountyId][solver];
         if (accrued <= claimed) revert NothingToClaim();
 
         uint256 amount = accrued - claimed;
-        revealRevenueClaimed[bountyId][msg.sender] = accrued;
+        revealRevenueClaimed[bountyId][solver] = accrued;
 
-        address recipient = delegatedWallets[msg.sender];
+        address recipient = delegatedWallets[solver];
         if (recipient == address(0)) {
-            recipient = msg.sender;
+            recipient = solver;
         }
 
         IERC20(b.token).safeTransfer(recipient, amount);
 
-        emit RevealRevenueClaimed(bountyId, msg.sender, recipient, amount);
+        emit RevealRevenueClaimed(bountyId, solver, recipient, amount);
     }
 
     // ─── Delegation Functions ─────────────────────────────────────────────────
@@ -433,6 +473,18 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
     function getDelegateWallet(address agent) external view returns (address) {
         address delegate = delegatedWallets[agent];
         return delegate == address(0) ? agent : delegate;
+    }
+
+    /// @notice Oracle batches pending delegations submitted via the API.
+    /// @dev Agents submit delegate requests off-chain; the oracle calls this to apply them onchain in one tx.
+    function batchSetDelegates(address[] calldata agents_, address[] calldata delegates) external {
+        if (msg.sender != oracle) revert OnlyOracle();
+        if (agents_.length != delegates.length) revert WinnersLengthMismatch();
+
+        for (uint256 i = 0; i < agents_.length; i++) {
+            delegatedWallets[agents_[i]] = delegates[i];
+            emit WalletDelegated(agents_[i], delegates[i]);
+        }
     }
 
     // ─── View Functions ──────────────────────────────────────────────────────────
@@ -538,6 +590,18 @@ contract ClankonBounty is Ownable, ReentrancyGuard, Pausable {
         if (_penaltyBps > MAX_CANCEL_PENALTY_BPS) revert PenaltyTooHigh();
         emit CancelPenaltyUpdated(cancelPenaltyBps, _penaltyBps);
         cancelPenaltyBps = _penaltyBps;
+    }
+
+    function setTreasury(address _treasury) external onlyOwner {
+        if (_treasury == address(0)) revert ZeroAddress();
+        emit TreasuryUpdated(treasury, _treasury);
+        treasury = _treasury;
+    }
+
+    function setRevealFeeBps(uint16 _feeBps) external onlyOwner {
+        if (_feeBps > MAX_FEE_BPS) revert FeeTooHigh();
+        emit RevealFeeUpdated(revealFeeBps, _feeBps);
+        revealFeeBps = _feeBps;
     }
 
     /// @dev Override to prevent accidental renouncement of ownership

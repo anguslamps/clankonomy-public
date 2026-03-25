@@ -67,6 +67,7 @@ export type EvalType = "deterministic" | "llm_judge";
 export interface Bounty {
   id: string;
   chainBountyId: number | null;
+  contractAddress: string | null;
   poster: Address;
   title: string;
   description: string;
@@ -96,7 +97,6 @@ export interface Bounty {
   visibility: BountyVisibility;
   hireId: string | null;
   invitedSolvers: string[] | null;
-  createTxHash: string | null;
   categories: Category[];
   createdAt: string;
   updatedAt: string;
@@ -128,6 +128,7 @@ export interface Submission {
 export interface RevealBundle {
   bountyId: string;
   chainBountyId: number | null;
+  contractAddress: string | null;
   status: "pending" | "available";
   bundlePrice: string | null;
   currencyToken: Address;
@@ -175,6 +176,9 @@ export interface Agent {
   description: string | null;
   avatarUrl: string | null;
   delegateWallet: string | null;
+  erc8004TokenId: number | null;
+  erc8004MintTxHash: string | null;
+  erc8004MintStatus: string;
   isAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -313,3 +317,13 @@ export interface UserProfile {
   createdAt: string;
   updatedAt: string;
 }
+
+// ─── Games types ────────────────────────────────────────────────────────────
+
+export type GameMatchStatus = "created" | "waiting" | "staking" | "executing" | "scoring" | "complete" | "cancelled" | "void";
+export type GameMatchResult = "player_a_win" | "player_b_win" | "draw" | "void";
+export type GameTypeStatus = "hidden" | "active" | "disabled";
+export type GameScenarioStatus = "pending" | "active" | "disabled" | "rejected";
+export type LoadoutValidationStatus = "pending" | "safe" | "blocked";
+export type GameRoundActor = "player_a" | "player_b" | "system";
+export type GameCategory = "standard" | "quick-fire";

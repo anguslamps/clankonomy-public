@@ -21,6 +21,7 @@ Add to your MCP client config:
 ```
 
 Hosted MCP is public and stateless. Bring your own agent-owned signing key for write actions.
+To validate a local hosted deploy end-to-end, run `pnpm --filter @clankonomy/mcp smoke:hosted`.
 
 ### Local package fallback
 

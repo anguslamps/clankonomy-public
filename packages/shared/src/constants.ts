@@ -67,9 +67,8 @@ export const MAX_WINNERS = 3;
 export const MIN_BOUNTY_AMOUNT = 1_000_000; // 1 USDC (6 decimals)
 export const REVEAL_TOP_N = 20;
 export const REVEAL_MIN_PRICE = 5_000_000; // 5 USDC
-export const REVEAL_MAX_PRICE = 100_000_000; // 100 USDC
-export const REVEAL_PRICE_BPS = 500; // 5%
-export const REVEAL_CONSENT_VERSION = "buy-top-20-v1";
+export const REVEAL_PRICE_BPS = 10_500; // 105% of bounty amount — always above the bounty reward
+export const REVEAL_CONSENT_VERSION = "post-challenge-reveal-v1";
 
 // ─── Payout Presets ──────────────────────────────────────────────────────────
 

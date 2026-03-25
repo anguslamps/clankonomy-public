@@ -46,11 +46,11 @@ export const MAINNET: NetworkConfig = {
   rpcUrl: "https://mainnet.base.org",
   blockExplorer: "https://basescan.org",
   usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-  bountyContract: "0x2366bc493e30d9C73bd7e749f62Bc1e707a6e6a2",
+  bountyContract: "0xb657C8B8bf22Ef880a206b59Ed7ff3883A61C8F1",
   lzChainKey: "base",
-  erc8004IdentityRegistry: "0x0000000000000000000000000000000000000000", // TBD: deploy to mainnet
-  erc8004ReputationRegistry: "0x0000000000000000000000000000000000000000", // TBD: deploy to mainnet
-  erc8183Adapter: "0x0000000000000000000000000000000000000000", // TBD: deploy to mainnet
+  erc8004IdentityRegistry: "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432",
+  erc8004ReputationRegistry: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+  erc8183Adapter: "0x45eFbfFCBE96FcFe00D70aCf55C2AE4D1CF1BC13",
 };
 
 // ─── Network Selection ──────────────────────────────────────────────────────
